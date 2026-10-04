@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<title>Starbucks nutrition explorer</title>
+<style>
+  :root {
+    --bg: #f4f7f5; --panel: #ffffff; --ink: #16322a; --muted: #5d7068;
+    --line: #d5dfda; --drink: #00704a; --food: #c8873a; --danger: #a43a2c;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--sans); }
+  h1, h2, h3 { font-family: var(--serif); font-weight: 600; line-height: 1.2; margin: 0; }
+  h1 { font-size: 1.7rem; } h2 { font-size: 1.3rem; margin-bottom: .6rem; } h3 { font-size: 1.05rem; margin-bottom: .4rem; }
+  a { color: var(--drink); }
+  :focus-visible { outline: 3px solid #f0b35a; outline-offset: 2px; }
+
+  .shell { display: grid; grid-template-columns: 21rem minmax(0, 1fr); gap: 1.5rem;
+           max-width: 88rem; margin: 0 auto; padding: 1.5rem; align-items: start; }
+  header.top { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 1rem; flex-wrap: wrap; }
+  header.top p { margin: 0; color: var(--muted); }
+  aside { position: sticky; top: 1rem; display: grid; gap: 1rem; max-height: calc(100vh - 2rem); overflow-y: auto; }
+  main { display: grid; gap: 1.5rem; min-width: 0; }
+  @media (max-width: 62rem) { .shell { grid-template-columns: 1fr; } aside { position: static; max-height: none; } }
+
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 1rem 1.1rem; }
+  label, .label { display: block; font-weight: 600; margin: .8rem 0 .25rem; }
+  .hint { color: var(--muted); font-size: .85rem; margin: .15rem 0 0; }
+  input[type=text], input[type=file], select, textarea {
+    width: 100%; font: inherit; padding: .45rem .55rem; border: 1px solid var(--line);
+    border-radius: 4px; background: #fff; color: var(--ink); }
+  textarea { resize: vertical; min-height: 2.6rem; font-family: ui-monospace, Consolas, monospace; font-size: .9rem; }
+  .row { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
+  .row > * { flex: 1; }
+  .check { display: flex; gap: .5rem; align-items: center; font-weight: 400; margin: .6rem 0 0; }
+  .check input { width: auto; }
+  button, .btn { font: inherit; font-weight: 600; padding: .5rem .9rem; border-radius: 4px; cursor: pointer;
+                 border: 1px solid var(--drink); background: var(--drink); color: #fff; text-decoration: none; display: inline-block; }
+  button.quiet, .btn.quiet { background: transparent; color: var(--drink); }
+  button.chip { padding: .15rem .55rem; font-weight: 400; font-size: .82rem; border-radius: 99px; border-color: var(--line); color: var(--ink); background: #fff; }
+  button:disabled { opacity: .55; cursor: progress; }
+  .actions { display: flex; gap: .6rem; flex-wrap: wrap; margin-top: 1rem; }
+  .chips { display: flex; gap: .35rem; flex-wrap: wrap; margin-top: .5rem; }
+
+  .flash { padding: .65rem .9rem; border-radius: 4px; border: 1px solid var(--line); background: #fff; }
+  .flash.error { border-color: var(--danger); color: var(--danger); }
+  .flash.info { border-color: var(--drink); }
+  ul.plain { margin: 0; padding-left: 1.1rem; }
+
+  .summary { display: flex; gap: 1.6rem; flex-wrap: wrap; align-items: baseline; }
+  .summary strong { font-family: var(--serif); font-size: 1.5rem; }
+  .dot { display: inline-block; width: .7rem; height: .7rem; border-radius: 50%; margin-right: .4rem; }
+  .drinks .dot { background: var(--drink); } .food .dot { background: var(--food); }
+
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  th, td { padding: .35rem .6rem; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { font-weight: 600; color: var(--muted); }
+  th:first-child, td:first-child { text-align: left; white-space: normal; min-width: 14rem; }
+  table.grid th:first-child, table.grid td:first-child { min-width: 0; white-space: nowrap; }
+  td.cal { position: relative; min-width: 8.5rem; text-align: right; }
+  td.cal .bar { position: absolute; left: 0; top: 18%; height: 64%; border-radius: 0 3px 3px 0; opacity: .28; }
+  td.cal b { position: relative; font-weight: 600; }
+  .drinks td.cal .bar { background: var(--drink); } .food td.cal .bar { background: var(--food); }
+  .more { color: var(--muted); font-size: .85rem; margin-top: .5rem; }
+
+  dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: .25rem 1.2rem; margin: 0 0 1rem; }
+  dl.facts dt { color: var(--muted); } dl.facts dd { margin: 0; font-weight: 600; }
+  .two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem; }
+  @media (max-width: 70rem) { .two { grid-template-columns: 1fr; } }
+  figure { margin: 0 0 1.2rem; } figure img { max-width: 100%; height: auto; border: 1px solid var(--line); border-radius: 4px; background: #fff; }
+  figcaption { color: var(--muted); font-size: .85rem; margin-bottom: .3rem; }
+
+  #ai-out { white-space: pre-wrap; margin-top: 1rem; }
+  #ai-out:empty { display: none; }
+  details { margin-top: .8rem; } summary { cursor: pointer; color: var(--muted); }
+  pre.facts { overflow: auto; max-height: 20rem; background: var(--bg); padding: .7rem; border-radius: 4px; font-size: .8rem; }
+  .welcome { max-width: 38rem; }
+  .welcome p { margin: .4rem 0; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <header class="top">
+    <h1>Starbucks nutrition explorer</h1>
+    <p>Upload the drink and food CSVs, filter them, and compare.</p>
+  </header>
+
+  <aside>
+    <section class="panel" aria-labelledby="up-h">
+      <h2 id="up-h">Your files</h2>
+      {% if loaded %}
+        <p style="margin:.2rem 0 .6rem">Loaded {{ totals.drinks }} drinks and {{ totals.food }} food items.</p>
+        <form method="post" action="{{ url_for('reset') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="quiet" type="submit">Remove files and start over</button>
+        </form>
+      {% else %}
+        <form method="post" action="{{ url_for('upload') }}" enctype="multipart/form-data">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <label for="drinks">Drinks CSV</label>
+          <input id="drinks" type="file" name="drinks" accept=".csv,text/csv" required>
+          <label for="food">Food CSV</label>
+          <input id="food" type="file" name="food" accept=".csv,text/csv" required>
+          <p class="hint">Up to 5 MB in total. Missing values, odd encodings and duplicates are cleaned up for you.</p>
+          <div class="actions"><button type="submit">Load files</button></div>
+        </form>
+      {% endif %}
+    </section>
+
+    {% if loaded %}
+    <section class="panel" aria-labelledby="f-h">
+      <h2 id="f-h">Filters</h2>
+      <form id="filters" method="get" action="{{ url_for('index') }}">
+        <input type="hidden" name="applied" value="1">
+        <label for="all_filters">Drinks and food</label>
+        <textarea id="all_filters" name="all_filters" rows="2" placeholder="calories<500">{{ values.get('all_filters', '') }}</textarea>
+        <label for="drink_filters">Drinks only</label>
+        <textarea id="drink_filters" name="drink_filters" rows="2" placeholder="protein_g>10">{{ values.get('drink_filters', '') }}</textarea>
+        <label for="food_filters">Food only</label>
+        <textarea id="food_filters" name="food_filters" rows="2" placeholder="fat_g<=10">{{ values.get('food_filters', '') }}</textarea>
+        <p class="hint">One condition per line, like <code>calories&lt;500</code>. Use &lt; &lt;= &gt; &gt;= == !=. Filterable: {{ columns | join(', ') }}.</p>
+        <div class="chips" aria-label="Quick filters">
+          <button type="button" class="chip" data-target="food_filters" data-add="calories<500">Food under 500 kcal</button>
+          <button type="button" class="chip" data-target="all_filters" data-add="protein_g>=10">10 g+ protein</button>
+          <button type="button" class="chip" data-target="all_filters" data-add="carbs_g<=15">15 g or less carbs</button>
+        </div>
+
+        <label for="name">Name contains</label>
+        <input id="name" type="text" name="name" value="{{ values.get('name', '') }}" placeholder="latte, mocha">
+        <label for="exclude_name">Name does not contain</label>
+        <input id="exclude_name" type="text" name="exclude_name" value="{{ values.get('exclude_name', '') }}" placeholder="iced">
+        <p class="hint">Separate words with commas. Matching ignores case and accents.</p>
+
+        <div class="row">
+          <div><label for="sort">Sort by</label>
+            <select id="sort" name="sort"><option value="">Menu order</option>
+              {% for c in sort_options if c != 'item' %}<option value="{{ c }}" {{ 'selected' if values.get('sort') == c }}>{{ labels.get(c, c) }}</option>{% endfor %}
+            </select></div>
+          <div><label for="limit">Rows shown</label>
+            <select id="limit" name="limit">
+              {% for n in (10, 25, 50, 100, 500) %}<option value="{{ n }}" {{ 'selected' if values.get('limit', '25') == n|string }}>{{ 'All (max 500)' if n == 500 else n }}</option>{% endfor %}
+            </select></div>
+        </div>
+        <label class="check"><input type="checkbox" name="desc" value="1" {{ 'checked' if 'desc' in values }}> Highest first</label>
+        <label class="check"><input type="checkbox" name="charts" value="1" {{ 'checked' if ('charts' in values or 'applied' not in values) }}> Draw charts</label>
+
+        <div class="actions">
+          <button type="submit">Apply filters</button>
+          <a class="btn quiet" href="{{ url_for('index') }}">Clear</a>
+        </div>
+      </form>
+    </section>
+    {% endif %}
+  </aside>
+
+  <main>
+    {% with msgs = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in msgs %}<div class="flash {{ cat }}" role="{{ 'alert' if cat == 'error' else 'status' }}">{{ msg }}</div>{% endfor %}
+    {% endwith %}
+
+    {% if not loaded %}
+      <section class="panel welcome">
+        <h2>Start by loading your two CSV files</h2>
+        <p>Choose the drinks file and the food file on the left. Once they load you can filter by any
+           nutrient, read statistics for each, compare drinks with food, see charts, and ask for a written summary.</p>
+        <p class="hint">The files stay on this computer. They are deleted after an hour without use, or when you remove them.</p>
+      </section>
+    {% else %}
+      {% if view.errors %}
+        <div class="flash error" role="alert"><ul class="plain">{% for e in view.errors %}<li>{{ e }}</li>{% endfor %}</ul></div>
+      {% else %}
+        {% for m in view.messages %}<div class="flash">{{ m }}</div>{% endfor %}
+
+        <section class="panel">
+          <div class="summary">
+            <span class="drinks"><span class="dot"></span><strong>{{ view.sizes.drinks[1] }}</strong> of {{ view.sizes.drinks[0] }} drinks match</span>
+            <span class="food"><span class="dot"></span><strong>{{ view.sizes.food[1] }}</strong> of {{ view.sizes.food[0] }} food items match</span>
+          </div>
+          {% if view.note %}<p class="hint" style="margin-top:.6rem">{{ view.note }}</p>{% endif %}
+          <div class="actions">
+            <a class="btn quiet" href="{{ url_for('download', which='drinks') }}?{{ query }}">Download matching drinks (CSV)</a>
+            <a class="btn quiet" href="{{ url_for('download', which='food') }}?{{ query }}">Download matching food (CSV)</a>
+          </div>
+        </section>
+
+        {% for key, title in (('drinks', 'Drinks'), ('food', 'Food')) %}
+          {% set t = view.tables[key] %}
+          <section class="panel {{ key }}">
+            <h2>{{ title }}</h2>
+            {% if t.rows %}
+              <div class="scroll"><table>
+                <thead><tr><th>Item</th><th>Calories</th>{% for h in t.headers %}<th>{{ h }}</th>{% endfor %}</tr></thead>
+                <tbody>
+                {% for r in t.rows %}
+                  <tr><td>{{ r.item }}</td>
+                      <td class="cal"><span class="bar" style="width: {{ r.pct }}%"></span><b>{{ r.cal }}</b></td>
+                      {% for c in r.cells %}<td>{{ c }}</td>{% endfor %}</tr>
+                {% endfor %}
+                </tbody></table></div>
+              <p class="more">Showing {{ t.shown }} of {{ t.total }}.
+                {% if t.total > t.shown %}Change “Rows shown” to see more.{% endif %}
+                Bars use one scale for drinks and food. “–” means the menu data has no value.</p>
+            {% else %}
+              <p>No {{ key }} match these filters. Loosen a condition or clear the filters.</p>
+            {% endif %}
+          </section>
+        {% endfor %}
+
+        <section class="panel">
+          <h2>Statistics</h2>
+          <div class="two">
+          {% for s in view.stats %}
+            <div>
+              <h3>{{ s.label }}</h3>
+              {% if s.empty %}
+                <p>No {{ s.label | lower }} with nutrition data match these filters.</p>
+              {% else %}
+                <dl class="facts">
+                  <dt>Items with data</dt><dd>{{ s.n_valid }} of {{ s.n_total }}</dd>
+                  {% for k, v in s.headline %}<dt>{{ k }}</dt><dd>{{ v }}</dd>{% endfor %}
+                </dl>
+                <div class="scroll">{{ s.table | safe }}</div>
+              {% endif %}
+            </div>
+          {% endfor %}
+          </div>
+        </section>
+
+        {% if view.comparison %}
+        <section class="panel">
+          <h2>Drinks compared with food</h2>
+          <p>{{ view.comparison.sentence }}</p>
+          <div class="scroll">{{ view.comparison.html | safe }}</div>
+          <p class="more">Per menu item. Serving sizes are not in the data. The fat-to-protein row compares total fat with total protein.</p>
+        </section>
+        {% else %}
+        <section class="panel"><h2>Drinks compared with food</h2>
+          <p>A comparison needs at least one drink and one food item with nutrition data. Loosen your filters to see it.</p></section>
+        {% endif %}
+
+        {% if view.charts %}
+        <section class="panel">
+          <h2>Charts</h2>
+          {% for title, img in view.charts %}
+            <figure><figcaption>{{ title }}</figcaption><img alt="{{ title }} chart" src="data:image/png;base64,{{ img }}"></figure>
+          {% endfor %}
+        </section>
+        {% elif view.show_charts and not view.charts_possible %}
+        <section class="panel"><h2>Charts</h2><p>Charts need at least one drink and one food item with nutrition data.</p></section>
+        {% endif %}
+
+        <section class="panel" aria-labelledby="ai-h">
+          <h2 id="ai-h">Written summary</h2>
+          <p class="hint" style="margin-top:0">Summarizes the items that match your filters, using the Groq API. Set GROQ_API_KEY on the server to enable it; without a key you get a plain summary.</p>
+          <label for="question">Question (optional)</label>
+          <input id="question" type="text" maxlength="300" placeholder="Which drinks are highest in carbs?">
+          <div class="actions"><button id="ai-btn" type="button">Write summary</button></div>
+          <div id="ai-out" role="status" aria-live="polite"></div>
+          <details id="ai-facts" hidden><summary>Figures the summary was based on</summary><pre class="facts" id="ai-facts-pre"></pre></details>
+        </section>
+      {% endif %}
+
+      {% if notes %}
+      <section class="panel">
+        <details><summary>How your files were cleaned ({{ notes | length }} notes)</summary>
+          <ul class="plain">{% for level, msg in notes %}<li>{{ msg }}</li>{% endfor %}</ul></details>
+      </section>
+      {% endif %}
+    {% endif %}
+  </main>
+</div>
+
+<script>
+  // Quick-filter chips append a condition to the chosen box.
+  document.querySelectorAll('button.chip').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var box = document.getElementById(b.dataset.target);
+      if (!box.value.split(/[\n,;]+/).some(function (t) { return t.trim() === b.dataset.add; })) {
+        box.value = box.value.trim() ? box.value.trim() + '\n' + b.dataset.add : b.dataset.add;
+      }
+    });
+  });
+
+  // Written summary: sends the current filter form plus the question.
+  var btn = document.getElementById('ai-btn');
+  if (btn) {
+    btn.addEventListener('click', async function () {
+      var out = document.getElementById('ai-out');
+      var facts = document.getElementById('ai-facts');
+      var fd = new FormData(document.getElementById('filters'));
+      fd.set('question', document.getElementById('question').value);
+      btn.disabled = true; btn.textContent = 'Writing…';
+      out.textContent = '';
+      try {
+        var res = await fetch('{{ url_for("insights") }}', {
+          method: 'POST', body: fd,
+          headers: { 'X-CSRF-Token': document.querySelector('meta[name=csrf-token]').content }
+        });
+        var data = await res.json();
+        if (!res.ok) { out.textContent = data.error || 'Something went wrong.'; return; }
+        out.textContent = (data.warning ? 'No AI summary: ' + data.warning + '\n\n' : '') + data.text;
+        document.getElementById('ai-facts-pre').textContent = JSON.stringify(data.facts, null, 2);
+        facts.hidden = false;
+      } catch (e) {
+        out.textContent = 'Could not reach the server. Check that it is still running.';
+      } finally {
+        btn.disabled = false; btn.textContent = 'Write summary';
+      }
+    });
+  }
+</script>
+</body>
+</html>
